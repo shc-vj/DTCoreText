@@ -240,8 +240,54 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 		CTLineRef line;
 		if(!truncateLine)
 		{
-			// create a line to fit
-			line = CTTypesetterCreateLine(typesetter, CFRangeMake(lineRange.location, lineRange.length));
+			static const unichar softHypenChar	= 0x00AD;
+			static const unichar nonBreakingSpaceChar = 0x00A0;
+			static const unichar hypenChar		= 0x2010;
+			
+			static NSMutableCharacterSet *nonCharCharset = nil;
+			
+			if( nil == nonCharCharset) {
+				nonCharCharset = [NSMutableCharacterSet whitespaceCharacterSet];
+				[nonCharCharset formUnionWithCharacterSet:[NSCharacterSet punctuationCharacterSet]];
+				[nonCharCharset addCharactersInRange:NSMakeRange(softHypenChar, 1)];
+				[nonCharCharset removeCharactersInRange:NSMakeRange(nonBreakingSpaceChar, 1)];
+			}
+						
+			NSString *lineString = [[_attributedStringFragment attributedSubstringFromRange:lineRange] string];
+            unichar lastChar = [lineString characterAtIndex:lineRange.length - 1];
+			
+			if (softHypenChar != lastChar) {				
+				// create a line to fit
+				line = CTTypesetterCreateLine(typesetter, CFRangeMake(lineRange.location, lineRange.length));
+			} else {
+				do {
+					NSMutableAttributedString *hyphenatedString = [[_attributedStringFragment attributedSubstringFromRange:lineRange] mutableCopy];
+					NSRange replaceRange = NSMakeRange(hyphenatedString.length - 1, 1);
+					[hyphenatedString replaceCharactersInRange:replaceRange withString:[NSString stringWithFormat:@"%C", hypenChar]];
+					line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)hyphenatedString);
+					
+					CGFloat offset = CTLineGetOffsetForStringIndex( line, hyphenatedString.length, NULL);
+					
+					if( offset > availableSpace ) {
+						CFRelease(line);
+						line = nil;
+						
+						// find earlier soft hyphen or word boundary
+						NSRange breakRange = [lineString rangeOfCharacterFromSet:nonCharCharset options:NSBackwardsSearch range:NSMakeRange(0, lineRange.length-1)];
+						if( breakRange.location == NSNotFound ) {
+							line = CTTypesetterCreateLine(typesetter, CFRangeMake(lineRange.location, lineRange.length));
+							break;
+						}
+						
+						// update line range
+						lineRange.length = breakRange.location+1;
+												
+						if( [lineString characterAtIndex:breakRange.location] != softHypenChar) {							
+							line = CTTypesetterCreateLine(typesetter, CFRangeMake(lineRange.location, lineRange.length));
+						}
+					}
+				} while( nil == line );
+			}
 		}
 		else
 		{
