@@ -22,18 +22,20 @@
 @property (nonatomic, strong) NSMutableDictionary *fontCache;
 @property (nonatomic, strong) NSString *linkGUID;
 
-- (DTCSSListStyle *)calculatedListStyle;
-
 // internal initializer
 - (id)initWithName:(NSString *)name attributes:(NSDictionary *)attributes options:(NSDictionary *)options;
 
 @end
 
+// global variables
 BOOL ___shouldUseiOS6Attributes = NO;
-
 NSDictionary *_classesForNames = nil;
 
+
 @implementation DTHTMLElement
+{
+	NSSet *_CSSClassNamesToIgnoreForCustomAttributes;
+}
 
 + (void)initialize
 {
@@ -59,7 +61,7 @@ NSDictionary *_classesForNames = nil;
 	_classesForNames = [tmpDict copy];
 }
 
-+ (DTHTMLElement *)elementWithName:(NSString *)name attributes:(NSDictionary *)attributes options:(NSDictionary *)options
++ (instancetype)elementWithName:(NSString *)name attributes:(NSDictionary *)attributes options:(NSDictionary *)options
 {
 	// look for specialized class
 	Class class = [_classesForNames objectForKey:name];
@@ -85,7 +87,7 @@ NSDictionary *_classesForNames = nil;
 	return element;
 }
 
-- (id)initWithName:(NSString *)name attributes:(NSDictionary *)attributes options:(NSDictionary *)options
+- (instancetype)initWithName:(NSString *)name attributes:(NSDictionary *)attributes options:(NSDictionary *)options
 {
 	// node does not need the options, but it needs the name and attributes
 	self = [super initWithName:name attributes:attributes];
@@ -96,17 +98,11 @@ NSDictionary *_classesForNames = nil;
 	return self;
 }
 
-- (NSDictionary *)attributesDictionary
+#pragma mark - Creating Attributed Strings
+
+- (NSDictionary *)attributesForAttributedStringRepresentation
 {
 	NSMutableDictionary *tmpDict = [NSMutableDictionary dictionary];
-	
-	BOOL shouldAddFont = YES;
-	
-	// copy additional attributes
-	if (_additionalAttributes)
-	{
-		[tmpDict setDictionary:_additionalAttributes];
-	}
 	
 	// add text attachment
 	if (_textAttachment)
@@ -122,39 +118,30 @@ NSDictionary *_classesForNames = nil;
 		
 		// remember original paragraphSpacing
 		[tmpDict setObject:[NSNumber numberWithFloat:self.paragraphStyle.paragraphSpacing] forKey:DTAttachmentParagraphSpacingAttribute];
-		
-#ifndef DT_ADD_FONT_ON_ATTACHMENTS
-		// omit adding a font unless we need it also on attachments, e.g. for editing
-		shouldAddFont = NO;
-#endif
 	}
 	
-	// otherwise we have a font
-	if (shouldAddFont)
+	CTFontRef font = [_fontDescriptor newMatchingFont];
+	
+	if (font)
 	{
-		CTFontRef font = [_fontDescriptor newMatchingFont];
-		
-		if (font)
-		{
 #if DTCORETEXT_SUPPORT_NS_ATTRIBUTES && __IPHONE_OS_VERSION_MAX_ALLOWED > __IPHONE_5_1
-			if (___useiOS6Attributes)
-			{
-				UIFont *uiFont = [UIFont fontWithCTFont:font];
-				[tmpDict setObject:uiFont forKey:NSFontAttributeName];
-			}
-			else
-#endif
-			{
-				// __bridge since its already retained elsewhere
-				[tmpDict setObject:(__bridge id)(font) forKey:(id)kCTFontAttributeName];
-			}
-			
-			
-			// use this font to adjust the values needed for the run delegate during layout time
-			[_textAttachment adjustVerticalAlignmentForFont:font];
-			
-			CFRelease(font);
+		if (___useiOS6Attributes)
+		{
+			UIFont *uiFont = [UIFont fontWithCTFont:font];
+			[tmpDict setObject:uiFont forKey:NSFontAttributeName];
 		}
+		else
+#endif
+		{
+			// __bridge since its already retained elsewhere
+			[tmpDict setObject:(__bridge id)(font) forKey:(id)kCTFontAttributeName];
+		}
+		
+		
+		// use this font to adjust the values needed for the run delegate during layout time
+		[_textAttachment adjustVerticalAlignmentForFont:font];
+		
+		CFRelease(font);
 	}
 	
 	// add hyperlink
@@ -276,13 +263,7 @@ NSDictionary *_classesForNames = nil;
 			[tmpDict setObject:_shadows forKey:DTShadowsAttribute];
 		}
 	}
-	
-	// add tag for PRE so that we can omit changing this font if we override fonts
-	if (_preserveNewlines)
-	{
-		[tmpDict setObject:[NSNumber numberWithBool:YES] forKey:DTPreserveNewlinesAttribute];
-	}
-	
+
 	if (_headerLevel)
 	{
 		[tmpDict setObject:[NSNumber numberWithInteger:_headerLevel] forKey:DTHeaderLevelAttribute];
@@ -297,6 +278,7 @@ NSDictionary *_classesForNames = nil;
 	{
 		[tmpDict setObject:_paragraphStyle.textBlocks forKey:DTTextBlocksAttribute];
 	}
+		
 	return tmpDict;
 }
 
@@ -341,6 +323,56 @@ NSDictionary *_classesForNames = nil;
 	return YES;
 }
 
+// adds the attributes that have not been "dealt with" to the DTCustomAttributesAttribute
+- (void)_addCustomHTMLAttributesToAttributedString:(NSMutableAttributedString *)attributedString
+{
+	NSSet *attributesToIgnore = [[self class] attributesToIgnoreForCustomAttributesAttribute];
+	NSRange entireString = NSMakeRange(0, [attributedString length]);
+	
+	[_attributes enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
+		
+		if ([attributesToIgnore containsObject:key]) return;
+
+		if (_CSSClassNamesToIgnoreForCustomAttributes && [key isEqualToString:@"class"])
+		{
+			NSMutableArray *classNamesToKeep = [NSMutableArray array];
+			
+			NSArray *components = nil;
+			
+			if ([value isKindOfClass:[NSString class]])
+			{
+				// split the class string
+				components = [value componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+			}
+			else if ([value isKindOfClass:[NSArray class]])
+			{
+				// already an array
+				components = value;
+			}
+			
+			for (NSString *oneClassName in components)
+			{
+				if (![_CSSClassNamesToIgnoreForCustomAttributes containsObject:oneClassName])
+				{
+					[classNamesToKeep addObject:oneClassName];
+				}
+			}
+			
+			if ([classNamesToKeep count])
+			{
+				value = [classNamesToKeep componentsJoinedByString:@" "];
+			}
+			else
+			{
+				return; // continue enumeration, class attribute would be empty
+			}
+		}
+		
+		// we preserve existing because they are from children
+		[attributedString addHTMLAttribute:key value:value range:entireString replaceExisting:NO];
+	}];
+}
+
 - (NSAttributedString *)attributedString
 {
 	@synchronized(self)
@@ -350,7 +382,7 @@ NSDictionary *_classesForNames = nil;
 			return nil;
 		}
 		
-		NSDictionary *attributes = [self attributesDictionary];
+		NSDictionary *attributes = [self attributesForAttributedStringRepresentation];
 		
 		NSMutableAttributedString *tmpString;
 		
@@ -426,7 +458,8 @@ NSDictionary *_classesForNames = nil;
 			{
 				if (![[tmpString string] hasSuffix:@"\n"])
 				{
-					NSAttributedString *attributedString = [[NSAttributedString alloc] initWithString:@"\n" attributes:[self attributesDictionary]];
+					NSDictionary *attributes = [self attributesForAttributedStringRepresentation];
+					NSAttributedString *attributedString = [[NSAttributedString alloc] initWithString:@"\n" attributes:attributes];
 					[tmpString appendAttributedString:attributedString];
 				}
 			}
@@ -487,15 +520,17 @@ NSDictionary *_classesForNames = nil;
 			}
 		}
 		
+		// add the custom attributes
+		if (_shouldProcessCustomHTMLAttributes)
+		{
+			[self _addCustomHTMLAttributesToAttributedString:tmpString];
+		}
+		
 		return tmpString;
 	}
 }
 
-- (DTHTMLElement *)parentElement
-{
-	return (DTHTMLElement *)self.parentNode;
-}
-
+#pragma mark - Working with CSS Styles
 
 // decodes the edgeInsets for padding or margin
 - (BOOL)_parseEdgeInsetsFromStyleDictionary:(NSDictionary *)styles forAttributesWithPrefix:(NSString *)prefix writingDirection:(CTWritingDirection)writingDirection intoEdgeInsets:(DTEdgeInsets *)intoEdgeInsets
@@ -850,11 +885,11 @@ NSDictionary *_classesForNames = nil;
 		}
 		else if ([decoration isEqualToString:@"overline"])
 		{
-			//TODO: add support for overline decoration
+			NSLog(@"Note: 'overline' text decoration not supported");
 		}
 		else if ([decoration isEqualToString:@"blink"])
 		{
-			//TODO: add support for blink decoration
+			NSLog(@"Note: 'blink' text decoration not supported");
 		}
 		else if ([decoration isEqualToString:@"inherit"])
 		{
@@ -1059,7 +1094,6 @@ NSDictionary *_classesForNames = nil;
 	
 	if (hasPadding)
 	{
-		// FIXME: this is a workaround because having a text block padding in addition to list ident messes up indenting of the list
 		if ([self.name isEqualToString:@"ul"] || [self.name isEqualToString:@"ol"])
 		{
 			_listIndent = _padding.left;
@@ -1081,7 +1115,6 @@ NSDictionary *_classesForNames = nil;
 			self.paragraphStyle.paragraphSpacing = _margins.bottom;
 			
 			// we increase the inherited values for the time being
-			// TODO: it would be preferred to calculate these from the margins values of the parent elements
 			self.paragraphStyle.headIndent += _margins.left;
 			self.paragraphStyle.firstLineHeadIndent = self.paragraphStyle.headIndent;
 			
@@ -1100,20 +1133,23 @@ NSDictionary *_classesForNames = nil;
 			newBlock.backgroundColor = _backgroundColor;
 			_backgroundColor = nil;
 			
-			NSMutableArray *blocks = [self.paragraphStyle.textBlocks mutableCopy];
-			
-			if (blocks)
+			if (self.paragraphStyle.textBlocks)
 			{
+				// make mutable version
+				NSMutableArray *mutableBlocks = [self.paragraphStyle.textBlocks mutableCopy];
+				
 				// add new block to the array
-				[blocks addObject:newBlock];
+				[mutableBlocks addObject:newBlock];
+				
+				// set non-mutable version
+				self.paragraphStyle.textBlocks = [mutableBlocks copy];
 			}
 			else
 			{
 				// didn't have any blocks before, start new array
-				blocks = [NSArray arrayWithObject:newBlock];
+				NSArray *blocks = [NSArray arrayWithObject:newBlock];
+				self.paragraphStyle.textBlocks = blocks;
 			}
-			
-			self.paragraphStyle.textBlocks = blocks;
 		}
 	}
 	else if (_displayStyle == DTHTMLElementDisplayStyleListItem)
@@ -1137,22 +1173,7 @@ NSDictionary *_classesForNames = nil;
 	return style;
 }
 
-- (void)addAdditionalAttribute:(id)attribute forKey:(id)key
-{
-	if (!_additionalAttributes)
-	{
-		_additionalAttributes = [[NSMutableDictionary alloc] init];
-	}
-	
-	[_additionalAttributes setObject:attribute forKey:key];
-}
-
-- (NSString *)attributeForKey:(NSString *)key
-{
-	return [_attributes objectForKey:key];
-}
-
-#pragma mark Calulcating Properties
+#pragma mark - Calulcating Properties
 
 - (id)valueForKeyPathWithInheritance:(NSString *)keyPath
 {
@@ -1190,23 +1211,17 @@ NSDictionary *_classesForNames = nil;
 	return value;
 }
 
+#pragma mark - Working with HTML Attributes
 
-- (DTCSSListStyle *)calculatedListStyle
++ (NSSet *)attributesToIgnoreForCustomAttributesAttribute
 {
-	DTCSSListStyle *style = [[DTCSSListStyle alloc] init];
-	
-	id calcType = [self valueForKeyPathWithInheritance:@"listStyle.type"];
-	id calcPos = [self valueForKeyPathWithInheritance:@"listStyle.position"];
-	id calcImage = [self valueForKeyPathWithInheritance:@"listStyle.imageName"];
-	
-	style.type = (DTCSSListStyleType)[calcType integerValue];
-	style.position = (DTCSSListStylePosition)[calcPos integerValue];
-	style.imageName = calcImage;
-	
-	return style;
+	return [NSSet setWithObjects:@"style", @"dir", @"align", @"src", @"href", @"color", @"face", @"size", @"name", @"height", @"width", nil];
 }
 
-#pragma mark - Inheriting Attributes
+- (NSString *)attributeForKey:(NSString *)key
+{
+	return [_attributes objectForKey:key];
+}
 
 - (void)inheritAttributesFromElement:(DTHTMLElement *)element
 {
@@ -1307,7 +1322,7 @@ NSDictionary *_classesForNames = nil;
 	}
 }
 
-#pragma mark Properties
+#pragma mark - Properties
 
 - (void)setTextColor:(DTColor *)textColor
 {
@@ -1381,6 +1396,11 @@ NSDictionary *_classesForNames = nil;
 	}
 }
 
+- (DTHTMLElement *)parentElement
+{
+	return (DTHTMLElement *)self.parentNode;
+}
+
 @synthesize fontDescriptor = _fontDescriptor;
 @synthesize paragraphStyle = _paragraphStyle;
 @synthesize textColor = _textColor;
@@ -1405,6 +1425,8 @@ NSDictionary *_classesForNames = nil;
 @synthesize padding = _padding;
 @synthesize linkGUID = _linkGUID;
 @synthesize containsAppleConvertedSpace = _containsAppleConvertedSpace;
+@synthesize CSSClassNamesToIgnoreForCustomAttributes = _CSSClassNamesToIgnoreForCustomAttributes;
+@synthesize shouldProcessCustomHTMLAttributes = _shouldProcessCustomHTMLAttributes;
 
 @end
 

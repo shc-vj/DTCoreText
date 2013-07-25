@@ -24,7 +24,7 @@
 	UIView *_backgroundView;
 
 	// these are pass-through, i.e. store until the content view is created
-	__unsafe_unretained id textDelegate;
+	DT_WEAK_VARIABLE id textDelegate;
 	NSAttributedString *_attributedString;
 	
 	BOOL _shouldDrawLinks;
@@ -139,6 +139,26 @@
 	
 	// layout custom subviews for visible area
 	[self setNeedsLayout];
+}
+
+#pragma mark - Working with a Cursor
+
+- (NSInteger)closestCursorIndexToPoint:(CGPoint)point
+{
+	// the point is in the coordinate system of the receiver, need to convert into those of the content view first
+	CGPoint pointInContentView = [self.attributedTextContentView convertPoint:point fromView:self];
+	
+	return [self.attributedTextContentView closestCursorIndexToPoint:pointInContentView];
+}
+
+- (CGRect)cursorRectAtIndex:(NSInteger)index
+{
+	CGRect rectInContentView = [self.attributedTextContentView cursorRectAtIndex:index];
+	
+	// the point is in the coordinate system of the content view, need to convert into those of the receiver first
+	CGRect rect = [self.attributedTextContentView convertRect:rectInContentView toView:self];
+	
+	return rect;
 }
 
 #pragma mark Notifications

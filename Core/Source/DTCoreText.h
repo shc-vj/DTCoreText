@@ -25,6 +25,7 @@
 #import "DTCoreTextParagraphStyle.h"
 #import "DTHTMLAttributedStringBuilder.h"
 #import "DTHTMLElement.h"
+#import "DTHTMLWriter.h"
 #import "NSCharacterSet+HTML.h"
 #import "NSDictionary+DTCoreText.h"
 #import "NSAttributedString+HTML.h"
@@ -64,6 +65,7 @@
 #import "DTCoreTextFontCollection.h"
 #import "DTCoreTextGlyphRun.h"
 #import "DTCoreTextLayoutFrame.h"
+#import "DTCoreTextLayoutFrame+Cursor.h"
 #import "DTCoreTextLayoutLine.h"
 #import "DTCoreTextLayouter.h"
 
@@ -73,5 +75,3 @@
 
 #endif
 
-
-#define DT_ADD_FONT_ON_ATTACHMENTS
