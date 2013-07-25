@@ -489,7 +489,6 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 		
 		if (!shouldTruncateLine)
 		{
-<<<<<<< HEAD
 			static const unichar softHypenChar	= 0x00AD;
 			static const unichar nonBreakingSpaceChar = 0x00A0;
 			static const unichar hypenChar		= 0x2010;
@@ -538,7 +537,6 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 					}
 				} while( nil == line );
 			}
-=======
 		}
 		else
 		{
