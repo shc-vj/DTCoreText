@@ -560,22 +560,6 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 				} while( nil == line );
 			}
 			
-//			static const unichar softHypen = 0x00AD;
-//			NSString *lineString = [[_attributedStringFragment attributedSubstringFromRange:lineRange] string];
-//			unichar lastChar = [lineString characterAtIndex:[lineString length] - 1];
-//			if (softHypen == lastChar)
-//			{
-//				NSMutableAttributedString *hyphenatedString = [[_attributedStringFragment attributedSubstringFromRange:lineRange] mutableCopy];
-//				NSRange replaceRange = NSMakeRange(hyphenatedString.length - 1, 1);
-//				[hyphenatedString replaceCharactersInRange:replaceRange withString:@"-"];
-//				line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)hyphenatedString);
-//				isHyphenatedString = YES;
-//			}
-//			else
-//			{
-//				// create a line to fit
-//				line = CTTypesetterCreateLine(typesetter, CFRangeMake(lineRange.location, lineRange.length));
-//			}
 		}
 		else
 		{
