@@ -510,7 +510,7 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 		
 		if (!shouldTruncateLine)
 		{
-<<<<<<< HEAD
+
 			static const unichar softHypenChar	= 0x00AD;
 			static const unichar nonBreakingSpaceChar = 0x00A0;
 			static const unichar hypenChar		= 0x2010;
@@ -558,24 +558,24 @@ static BOOL _DTCoreTextLayoutFramesShouldDrawDebugFrames = NO;
 						}
 					}
 				} while( nil == line );
-=======
-			static const unichar softHypen = 0x00AD;
-			NSString *lineString = [[_attributedStringFragment attributedSubstringFromRange:lineRange] string];
-			unichar lastChar = [lineString characterAtIndex:[lineString length] - 1];
-			if (softHypen == lastChar)
-			{
-				NSMutableAttributedString *hyphenatedString = [[_attributedStringFragment attributedSubstringFromRange:lineRange] mutableCopy];
-				NSRange replaceRange = NSMakeRange(hyphenatedString.length - 1, 1);
-				[hyphenatedString replaceCharactersInRange:replaceRange withString:@"-"];
-				line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)hyphenatedString);
-				isHyphenatedString = YES;
 			}
-			else
-			{
-				// create a line to fit
-				line = CTTypesetterCreateLine(typesetter, CFRangeMake(lineRange.location, lineRange.length));
->>>>>>> f53ed194570d45fd829c6789b48a7778bbd09a69
-			}
+			
+//			static const unichar softHypen = 0x00AD;
+//			NSString *lineString = [[_attributedStringFragment attributedSubstringFromRange:lineRange] string];
+//			unichar lastChar = [lineString characterAtIndex:[lineString length] - 1];
+//			if (softHypen == lastChar)
+//			{
+//				NSMutableAttributedString *hyphenatedString = [[_attributedStringFragment attributedSubstringFromRange:lineRange] mutableCopy];
+//				NSRange replaceRange = NSMakeRange(hyphenatedString.length - 1, 1);
+//				[hyphenatedString replaceCharactersInRange:replaceRange withString:@"-"];
+//				line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)hyphenatedString);
+//				isHyphenatedString = YES;
+//			}
+//			else
+//			{
+//				// create a line to fit
+//				line = CTTypesetterCreateLine(typesetter, CFRangeMake(lineRange.location, lineRange.length));
+//			}
 		}
 		else
 		{
