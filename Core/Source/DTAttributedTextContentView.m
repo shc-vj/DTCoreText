@@ -6,13 +6,15 @@
 //  Copyright 2011 Drobnik.com. All rights reserved.
 //
 
-#import "DTAttributedTextContentView.h"
-#import "DTCoreText.h"
-#import "DTDictationPlaceholderTextAttachment.h"
 #import <QuartzCore/QuartzCore.h>
+
+#import "DTCoreText.h"
+#import "DTAttributedTextContentView.h"
+#import "DTDictationPlaceholderTextAttachment.h"
 #import "DTAccessibilityViewProxy.h"
 #import "DTAccessibilityElement.h"
 #import "DTCoreTextLayoutFrameAccessibilityElementGenerator.h"
+#import "DTBlockFunctions.h"
 
 #if !__has_feature(objc_arc)
 #error THIS CODE MUST BE COMPILED WITH ARC ENABLED!
@@ -209,8 +211,6 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 	
 	for (DTCoreTextLayoutLine *oneLine in lines)
 	{
-		NSRange lineRange = [oneLine stringRange];
-		
 		NSUInteger skipRunsBeforeLocation = 0;
 		
 		for (DTCoreTextGlyphRun *oneRun in oneLine.glyphRuns)
@@ -223,23 +223,50 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 			{
 				// see if it's a link
 				NSRange effectiveRangeOfLink;
-				NSRange effectiveRangeOfAttachment;
 				
 				// make sure that a link is only as long as the area to the next attachment or the current attachment itself
-				DTTextAttachment *attachment = [layoutString attribute:NSAttachmentAttributeName atIndex:runRange.location longestEffectiveRange:&effectiveRangeOfAttachment inRange:lineRange];
+				DTTextAttachment *attachment = oneRun.attributes[NSAttachmentAttributeName];
 				
 				// if there is no attachment then the effectiveRangeOfAttachment contains the range until the next attachment
-				NSURL *linkURL = [layoutString attribute:DTLinkAttribute atIndex:runRange.location longestEffectiveRange:&effectiveRangeOfLink inRange:effectiveRangeOfAttachment];
+				NSURL *linkURL = oneRun.attributes[DTLinkAttribute];
+				
+				if (linkURL)
+				{
+					effectiveRangeOfLink = runRange;
+				}
 				
 				// avoid chaining together glyph runs for an attachment
 				if (linkURL && !attachment)
 				{
-					// compute bounding frame over potentially multiple (chinese) glyphs
-					skipRunsBeforeLocation = effectiveRangeOfLink.location+effectiveRangeOfLink.length;
+					NSInteger glyphIndex = [oneLine.glyphRuns indexOfObject:oneRun];
 					
-					// make one link view for all glyphruns in this line
+					// chain together this glyph run with following runs for combined link buttons
+					for (NSInteger i=glyphIndex+1; i<[oneLine.glyphRuns count]; i++)
+					{
+						DTCoreTextGlyphRun *followingRun = oneLine.glyphRuns[i];
+						NSURL *followingURL = followingRun.attributes[DTLinkAttribute];
+						
+						if (![[followingURL absoluteString] isEqualToString:[linkURL absoluteString]])
+						{
+							// following glyph run has different or no link URL
+							break;
+						}
+						
+						if (followingRun.attachment)
+						{
+							// do not join a following attachment to the combined link
+							break;
+						}
+						
+						// extend effective link range
+						effectiveRangeOfLink = NSUnionRange(effectiveRangeOfLink, followingRun.stringRange);
+					}
+					
+					// frame for link view includes for all joined glyphruns with same link in this line
 					frameForSubview = [oneLine frameOfGlyphsWithRange:effectiveRangeOfLink];
-					runRange = effectiveRangeOfLink;
+					
+					// this following glyph run link attribute is joined to link range
+					skipRunsBeforeLocation = NSMaxRange(effectiveRangeOfLink);
 				}
 				else
 				{
@@ -275,10 +302,10 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 				}
 				
 				// round frame
-				frameForSubview.origin.x = floorf(frameForSubview.origin.x);
-				frameForSubview.origin.y = ceilf(frameForSubview.origin.y);
-				frameForSubview.size.width = roundf(frameForSubview.size.width);
-				frameForSubview.size.height = roundf(frameForSubview.size.height);
+				frameForSubview.origin.x = floor(frameForSubview.origin.x);
+				frameForSubview.origin.y = ceil(frameForSubview.origin.y);
+				frameForSubview.size.width = round(frameForSubview.size.width);
+				frameForSubview.size.height = round(frameForSubview.size.height);
 				
 				if (CGRectGetMinY(frameForSubview)> CGRectGetMaxY(rect) || CGRectGetMaxY(frameForSubview) < CGRectGetMinY(rect))
 				{
@@ -293,7 +320,6 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 					
 					if (existingAttachmentView)
 					{
-						//dispatch_sync(dispatch_get_main_queue(), ^{
 						existingAttachmentView.hidden = NO;
 						existingAttachmentView.frame = frameForSubview;
 						
@@ -301,7 +327,6 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 						
 						[existingAttachmentView setNeedsLayout];
 						[existingAttachmentView setNeedsDisplay];
-						//});
 						
 						linkURL = nil; // prevent adding link button on top of image view
 					}
@@ -348,8 +373,8 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 					// make sure that the frame height is no less than the line height for hyperlinks
 					if (frameForSubview.size.height < oneLine.frame.size.height)
 					{
-						frameForSubview.origin.y = truncf(oneLine.frame.origin.y);
-						frameForSubview.size.height = ceilf(oneLine.frame.size.height);
+						frameForSubview.origin.y = trunc(oneLine.frame.origin.y);
+						frameForSubview.size.height = ceil(oneLine.frame.size.height);
 					}
 					
 					if (existingLinkView)
@@ -364,8 +389,8 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 						// make sure that the frame height is no less than the line height for hyperlinks
 						if (frameForSubview.size.height < oneLine.frame.size.height)
 						{
-							frameForSubview.origin.y = truncf(oneLine.frame.origin.y);
-							frameForSubview.size.height = ceilf(oneLine.frame.size.height);
+							frameForSubview.origin.y = trunc(oneLine.frame.origin.y);
+							frameForSubview.size.height = ceil(oneLine.frame.size.height);
 						}
 						
 						if (_delegateFlags.delegateSupportsCustomViewsForLinks)
@@ -474,35 +499,37 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 
 - (void)relayoutText
 {
-	if (![NSThread isMainThread])
-	{
-		[self performSelectorOnMainThread:@selector(relayoutText) withObject:nil waitUntilDone:YES];
-		return;
-	}
-	
-    // Make sure we actually have a superview and a previous layout before attempting to relayout the text.
-    if (_layoutFrame && self.superview)
-	{
-        // need new layout frame, layouter can remain because the attributed string is probably the same
-        self.layoutFrame = nil;
-        
-        // remove all links because they might have merged or split
-        [self removeAllCustomViewsForLinks];
-        
-        if (_attributedString)
-        {
-            // triggers new layout
-            CGSize neededSize = [self intrinsicContentSize];
-            
-			CGRect optimalFrame = CGRectMake(self.frame.origin.x, self.frame.origin.y, neededSize.width, neededSize.height);
-			NSDictionary *userInfo = [NSDictionary dictionaryWithObject:[NSValue valueWithCGRect:optimalFrame] forKey:@"OptimalFrame"];
+	DTBlockPerformSyncIfOnMainThreadElseAsync(^{
+
+		// Make sure we actually have a superview and a previous layout before attempting to relayout the text.
+		if (_layoutFrame && self.superview)
+		{
+			// need new layout frame, layouter can remain because the attributed string is probably the same
+			self.layoutFrame = nil;
 			
-			[[NSNotificationCenter defaultCenter] postNotificationName:DTAttributedTextContentViewDidFinishLayoutNotification object:self userInfo:userInfo];
-        }
-		
-		[self setNeedsLayout];
-		[self setNeedsDisplayInRect:self.bounds];
-    }
+			// remove all links because they might have merged or split
+			[self removeAllCustomViewsForLinks];
+			
+			if (_attributedString)
+			{
+				// triggers new layout
+				CGSize neededSize = [self intrinsicContentSize];
+				
+				CGRect optimalFrame = CGRectMake(self.frame.origin.x, self.frame.origin.y, neededSize.width, neededSize.height);
+				NSDictionary *userInfo = [NSDictionary dictionaryWithObject:[NSValue valueWithCGRect:optimalFrame] forKey:@"OptimalFrame"];
+				
+				[[NSNotificationCenter defaultCenter] postNotificationName:DTAttributedTextContentViewDidFinishLayoutNotification object:self userInfo:userInfo];
+			}
+			
+			[self setNeedsLayout];
+			[self setNeedsDisplayInRect:self.bounds];
+			
+			if ([self respondsToSelector:@selector(invalidateIntrinsicContentSize)])
+			{
+            [self invalidateIntrinsicContentSize];
+			}
+		}
+	});
 }
 
 - (void)removeAllCustomViewsForLinks
@@ -604,7 +631,7 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 	}
 	else
 	{
-		rect.size.height = CGFLOAT_OPEN_HEIGHT; // necessary height set as soon as we know it.
+		rect.size.height = CGFLOAT_HEIGHT_UNKNOWN; // necessary height set as soon as we know it.
 	}
 	
 	return rect;
@@ -633,6 +660,11 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 		_edgeInsets = edgeInsets;
 		
 		[self relayoutText];
+		
+		if ([self respondsToSelector:@selector(invalidateIntrinsicContentSize)])
+		{
+			[self invalidateIntrinsicContentSize];
+		}
 	}
 }
 
@@ -659,6 +691,11 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 			// this is needed or else no lazy layout will be triggered if there is no layout frame yet (before this is added to a superview)
 			[self setNeedsLayout];
 			[self setNeedsDisplayInRect:self.bounds];
+		}
+		
+		if ([self respondsToSelector:@selector(invalidateIntrinsicContentSize)])
+		{
+			[self invalidateIntrinsicContentSize];
 		}
 	}
 }
@@ -715,6 +752,11 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 		_shouldAddFirstLineLeading = shouldAddLeading;
 		
 		[self setNeedsDisplay];
+		
+		if ([self respondsToSelector:@selector(invalidateIntrinsicContentSize)])
+		{
+			[self invalidateIntrinsicContentSize];
+		}
 	}
 }
 
@@ -725,6 +767,11 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 		_shouldDrawImages = shouldDrawImages;
 		
 		[self setNeedsDisplay];
+		
+		if ([self respondsToSelector:@selector(invalidateIntrinsicContentSize)])
+		{
+			[self invalidateIntrinsicContentSize];
+		}
 	}
 }
 
@@ -735,6 +782,11 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 		_shouldDrawLinks = shouldDrawLinks;
 		
 		[self setNeedsDisplay];
+		
+		if ([self respondsToSelector:@selector(invalidateIntrinsicContentSize)])
+		{
+			[self invalidateIntrinsicContentSize];
+		}
 	}
 }
 
@@ -814,7 +866,7 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 				}
 				else
 				{
-					rect.size.height = CGFLOAT_OPEN_HEIGHT; // necessary height set as soon as we know it.
+					rect.size.height = CGFLOAT_HEIGHT_UNKNOWN; // necessary height set as soon as we know it.
 				}
 				
 				_layoutFrame = [theLayouter layoutFrameWithRect:rect range:NSMakeRange(0, 0)];
@@ -1020,6 +1072,10 @@ static Class _layerClassToUseForDTAttributedTextContentView = nil;
 	UIGraphicsBeginImageContextWithOptions(bounds.size, NO, 0);
 	
 	CGContextRef context = UIGraphicsGetCurrentContext();
+	
+	if(!context) {
+		return nil;
+	}
 	
 	CGContextTranslateCTM(context, -bounds.origin.x, -bounds.origin.y);
 	
